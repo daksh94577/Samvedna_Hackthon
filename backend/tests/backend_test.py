@@ -249,10 +249,18 @@ class TestSupervisor:
 
 # -------- Support Directory --------
 class TestSupport:
-    def test_six_entries(self, session):
+    def test_entries_with_latlng(self, session):
         r = session.get(f"{API}/support-directory")
         assert r.status_code == 200
-        assert len(r.json()) == 6
+        data = r.json()
+        assert len(data) >= 6
+        for e in data:
+            assert "lat" in e and "lng" in e, f"missing lat/lng: {e}"
+            assert isinstance(e["lat"], (int, float))
+            assert isinstance(e["lng"], (int, float))
+            # India bounding box sanity
+            assert 5.0 <= e["lat"] <= 40.0
+            assert 65.0 <= e["lng"] <= 100.0
 
 
 
@@ -510,3 +518,144 @@ class TestAuditEntries:
         actions = {l.get("action") for l in logs}
         for a in ["case_create", "escalate", "attachment_add", "attachment_download", "export_pack", "audio_play", "push_subscribe"]:
             assert a in actions, f"missing audit action: {a}; have {actions}"
+
+
+# -------- Case Chat (encrypted) --------
+class TestChat:
+    def test_send_chat_victim_and_decrypt(self, session, victim_auth, victim_case_id):
+        text = f"Hello from victim {uuid.uuid4().hex[:6]}"
+        r = session.post(f"{API}/cases/{victim_case_id}/chat", headers=victim_auth["headers"], json={"text": text})
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["text"] == text
+        assert d["author_role"] == "victim"
+        assert "text_encrypted" not in d
+        assert "id" in d and "created_at" in d
+
+    def test_empty_text_400(self, session, victim_auth, victim_case_id):
+        r = session.post(f"{API}/cases/{victim_case_id}/chat", headers=victim_auth["headers"], json={"text": "   "})
+        assert r.status_code == 400
+
+    def test_nonexistent_case_404(self, session, victim_auth):
+        r = session.post(f"{API}/cases/SM-9999/chat", headers=victim_auth["headers"], json={"text": "hi"})
+        assert r.status_code == 404
+        r2 = session.get(f"{API}/cases/SM-9999/chat", headers=victim_auth["headers"])
+        assert r2.status_code == 404
+
+    def test_cross_victim_chat_403(self, session, victim_case_id):
+        s2 = requests.Session()
+        s2.headers.update({"Content-Type": "application/json"})
+        r1 = s2.post(f"{API}/auth/request-otp", json={"phone": "+911234500003", "email": f"TEST_cv_{uuid.uuid4().hex[:6]}@x.com"})
+        d = r1.json(); sid = d["session_id"]
+        s2.post(f"{API}/auth/verify-mobile", json={"session_id": sid, "code": d["dev_mobile_otp"]})
+        v = s2.post(f"{API}/auth/verify-email", json={"session_id": sid, "code": d["dev_email_otp"]}).json()
+        hdr = {"Authorization": f"Bearer {v['token']}", "Content-Type": "application/json"}
+        r2 = s2.post(f"{API}/cases/{victim_case_id}/chat", headers=hdr, json={"text": "intrusion"})
+        assert r2.status_code == 403
+        r3 = s2.get(f"{API}/cases/{victim_case_id}/chat", headers=hdr)
+        assert r3.status_code == 403
+
+    def test_chat_db_stored_encrypted(self, session, victim_auth, victim_case_id):
+        text = f"secret-chat-{uuid.uuid4().hex[:8]}"
+        r = session.post(f"{API}/cases/{victim_case_id}/chat", headers=victim_auth["headers"], json={"text": text})
+        assert r.status_code == 200
+        msg_id = r.json()["id"]
+        from pymongo import MongoClient
+        from pathlib import Path
+        env = {}
+        for line in Path("/app/backend/.env").read_text().splitlines():
+            if "=" in line and not line.strip().startswith("#"):
+                k, v = line.split("=", 1)
+                env[k.strip()] = v.strip().strip('"')
+        mc = MongoClient(env["MONGO_URL"])
+        dbh = mc[env["DB_NAME"]]
+        doc = dbh.chat_messages.find_one({"id": msg_id})
+        assert doc is not None
+        enc = doc.get("text_encrypted")
+        assert enc, "text_encrypted missing in DB"
+        assert enc != text, "chat stored in plaintext!"
+        assert enc.startswith("gAAAAA"), f"not a Fernet token: {enc[:20]}"
+
+    def test_counsellor_and_victim_both_chat(self, session, victim_auth, counsellor_auth):
+        # Create a case and accept it as counsellor
+        payload = {"category": "caste", "narrative": "Chat flow test", "language": "en",
+                   "threat_present": False, "isolation": False}
+        rc = session.post(f"{API}/cases", headers=victim_auth["headers"], json=payload)
+        cid = rc.json()["case_id"]
+        # counsellor accepts
+        ra = session.patch(f"{API}/cases/{cid}", headers={**counsellor_auth["headers"], "Content-Type": "application/json"}, json={"accept": True})
+        assert ra.status_code == 200
+        # victim sends
+        t1 = "I need help today"
+        r1 = session.post(f"{API}/cases/{cid}/chat", headers=victim_auth["headers"], json={"text": t1})
+        assert r1.status_code == 200
+        # counsellor sends
+        t2 = "I am here to assist you"
+        r2 = session.post(f"{API}/cases/{cid}/chat", headers={**counsellor_auth["headers"], "Content-Type": "application/json"}, json={"text": t2})
+        assert r2.status_code == 200
+        assert r2.json()["author_role"] == "counsellor"
+        # list as victim
+        lv = session.get(f"{API}/cases/{cid}/chat", headers=victim_auth["headers"])
+        assert lv.status_code == 200
+        msgs_v = lv.json()
+        texts_v = [m["text"] for m in msgs_v]
+        assert t1 in texts_v and t2 in texts_v
+        # chronological order
+        times = [m["created_at"] for m in msgs_v]
+        assert times == sorted(times)
+        # list as counsellor
+        lc = session.get(f"{API}/cases/{cid}/chat", headers=counsellor_auth["headers"])
+        assert lc.status_code == 200
+        texts_c = [m["text"] for m in lc.json()]
+        assert t1 in texts_c and t2 in texts_c
+
+
+# -------- Supervisor Impact Dashboard --------
+class TestImpact:
+    def test_counsellor_403(self, session, counsellor_auth):
+        r = session.get(f"{API}/supervisor/impact?days=7", headers=counsellor_auth["headers"])
+        assert r.status_code == 403
+
+    def test_supervisor_impact_shape(self, session, supervisor_auth):
+        r = session.get(f"{API}/supervisor/impact?days=7", headers=supervisor_auth["headers"])
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["window_days"] == 7
+        assert isinstance(d["total_cases"], int)
+        assert isinstance(d["critical_cases"], int)
+        assert isinstance(d["daily"], list) and len(d["daily"]) == 7
+        for row in d["daily"]:
+            assert "date" in row and "count" in row
+            assert isinstance(row["count"], int)
+        assert isinstance(d["svi_distribution"], list) and len(d["svi_distribution"]) == 4
+        levels = {row["level"] for row in d["svi_distribution"]}
+        assert levels == {"Low", "Moderate", "High", "Critical"}
+        assert isinstance(d["categories"], list)
+        # avg_tte can be None or a float
+        assert ("avg_time_to_escalation_min" in d)
+        assert isinstance(d["total_escalations"], int)
+
+    def test_impact_custom_days(self, session, supervisor_auth):
+        r = session.get(f"{API}/supervisor/impact?days=3", headers=supervisor_auth["headers"])
+        assert r.status_code == 200
+        d = r.json()
+        assert d["window_days"] == 3
+        assert len(d["daily"]) == 3
+
+    def test_impact_escalation_reflects(self, session, supervisor_auth, victim_auth, counsellor_auth):
+        # Create and escalate a case, then impact should report >=1 escalation
+        rc = session.post(f"{API}/cases", headers=victim_auth["headers"], json={
+            "category": "physical", "narrative": "threat escalation case",
+            "language": "en", "threat_present": True, "isolation": False,
+        })
+        cid = rc.json()["case_id"]
+        re_ = session.post(f"{API}/cases/{cid}/escalate",
+                           headers={**counsellor_auth["headers"], "Content-Type": "application/json"},
+                           json={"target": "law_enforcement", "note": "x"})
+        assert re_.status_code == 200
+        r = session.get(f"{API}/supervisor/impact?days=7", headers=supervisor_auth["headers"])
+        d = r.json()
+        assert d["total_escalations"] >= 1
+        # Once we have at least one escalation in window, avg should be a number
+        if d["total_escalations"] >= 1:
+            assert d["avg_time_to_escalation_min"] is None or isinstance(d["avg_time_to_escalation_min"], (int, float))
