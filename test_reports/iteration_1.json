@@ -1,0 +1,33 @@
+{
+  "summary": "Comprehensive backend testing of Samvedna/संवेदना API (20 pytest cases, all passed). Covered seed idempotency, dual-OTP auth happy path and security edge cases (invalid OTP 400, max 3 attempts 429, email-before-mobile 409), SVI engine weights (0.45/0.35/0.20) and safety override for self-harm/threat, case CRUD (create+list+patch), bilingual draft (>400 chars each), counsellor OTP login + queue sorted by SVI desc, escalation flow (stage=Filed, status=mock_submitted_to_NHAA), supervisor-only audit log (403 for counsellor), and support directory (6 entries).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/verify-mobile", "issue": "Attempts counter is incremented BEFORE checking the OTP, so a correct OTP still consumes an attempt. After 2 wrong submissions a legitimate correct OTP on the 3rd try returns 429 instead of success. Consider only incrementing on failure."},
+      {"endpoint": "/api/seed", "issue": "Idempotency relies on both users_cnt AND cases_cnt being >0. If cases collection is cleared but users remain, re-seed will re-insert 5 new case rows (no case-level dedupe). Low risk but non-strict idempotency."},
+      {"endpoint": "/api/counsellor/verify", "issue": "OTP expiry (expires_at) is not checked (unlike /auth/verify-mobile and /auth/verify-email). Counsellor OTPs effectively never expire until attempts cap is hit."},
+      {"endpoint": "/api/cases/{case_id}/draft", "issue": "Draft endpoint auto-advances stage to 'Drafted' on every GET. A victim viewing a 'Filed' or escalated case will have stage overwritten back to 'Drafted'-style set (set logic preserves, but updates stage field directly). Should be guarded."},
+      {"endpoint": "/api/cases", "issue": "No cleanup/pagination; all tests leave TEST_ cases behind. Not blocking, but accumulates."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Consider only incrementing OTP attempts on failure (currently correct code after 2 wrong attempts still fails with 429).",
+    "Add expires_at check in /api/counsellor/verify for parity with victim verify endpoints.",
+    "Guard /api/cases/{case_id}/draft from downgrading stage of already-Filed cases."
+  ],
+  "critical_code_review_comments": [
+    "server.py is ~640 lines and mixes auth, cases, counsellor, supervisor, support, seed, dev — consider splitting into routers (auth.py, cases.py, counsellor.py) for maintainability.",
+    "JWT_SECRET falls back to a hardcoded dev secret; backend/.env sets it explicitly but production deployments without the env var will silently use the weak default.",
+    "DEV_MODE derivation (line 48) uses `not (A and B and C) or not (D and E)` — subtle precedence; works but add parentheses for clarity.",
+    "audio_b64 is stored as pseudo_encrypted SHA-prefix + first 200 raw chars — original data is partially retained in plaintext; acknowledged as prototype but worth a code comment."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100%", "frontend": "n/a"},
+  "test_credentials": "DEV_MODE active; OTPs returned in request-otp response. Seeded users: victim.demo@samvedna.in / +919999988888, priya.counsellor@samvedna.in, verma.supervisor@samvedna.in.",
+  "seed_data_creation": "Used POST /api/seed; created 2 counsellors + 1 victim + 5 demo cases (idempotent on repeat).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "pytest file at /app/backend/tests/backend_test.py runs under pytest-xdist (2 workers). Backend passes 20/20. Minor logic improvements suggested (OTP attempt counter, counsellor expiry, draft stage guard) but none block MVP."
+}
