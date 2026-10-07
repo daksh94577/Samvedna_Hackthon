@@ -342,3 +342,171 @@ class TestAudio:
         logs = ra.json()
         matching = [l for l in logs if l.get("action") == "audio_play" and l.get("target") == cid]
         assert len(matching) >= 1, "audio_play audit entry missing"
+
+
+
+# -------- Push Notifications --------
+class TestPush:
+    def test_public_key(self, session):
+        r = session.get(f"{API}/push/public-key")
+        assert r.status_code == 200
+        assert "public_key" in r.json()
+
+    def test_subscribe_victim_403(self, session, victim_auth):
+        sub = {"endpoint": "https://example.com/push/victim", "keys": {"p256dh": "x", "auth": "y"}}
+        r = session.post(f"{API}/push/subscribe", headers=victim_auth["headers"], json={"subscription": sub})
+        assert r.status_code == 403
+
+    def test_subscribe_counsellor_ok(self, session, counsellor_auth):
+        sub = {"endpoint": f"https://example.com/push/{uuid.uuid4().hex}", "keys": {"p256dh": "x", "auth": "y"}}
+        r = session.post(f"{API}/push/subscribe", headers={**counsellor_auth["headers"], "Content-Type": "application/json"}, json={"subscription": sub})
+        assert r.status_code == 200
+        assert r.json().get("ok") is True
+
+    def test_push_test_shape(self, session, counsellor_auth):
+        r = session.post(f"{API}/push/test", headers=counsellor_auth["headers"])
+        assert r.status_code == 200
+        d = r.json()
+        assert "ok" in d and "sent" in d and "subs" in d
+        assert isinstance(d["sent"], int) and isinstance(d["subs"], int)
+
+    def test_push_test_victim_403(self, session, victim_auth):
+        r = session.post(f"{API}/push/test", headers=victim_auth["headers"])
+        assert r.status_code == 403
+
+
+# -------- Attachments (encrypted) --------
+import base64 as _b64m
+
+
+@pytest.fixture(scope="module")
+def victim_case_id(session, victim_auth):
+    r = session.post(f"{API}/cases", headers=victim_auth["headers"], json={
+        "category": "caste", "narrative": "attachment base case", "language": "en",
+        "threat_present": False, "isolation": False,
+    })
+    assert r.status_code == 200
+    return r.json()["case_id"]
+
+
+class TestAttachments:
+    def test_add_attachment(self, session, victim_auth, victim_case_id):
+        data = _b64m.b64encode(b"hello world attachment").decode()
+        r = session.post(f"{API}/cases/{victim_case_id}/attachments", headers=victim_auth["headers"], json={
+            "filename": "proof.txt", "content_type": "text/plain", "data_b64": data,
+        })
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["filename"] == "proof.txt"
+        assert "encrypted" not in d
+        assert "id" in d
+        victim_auth["att_id"] = d["id"]
+        victim_auth["att_data"] = data
+
+    def test_list_attachments_no_encrypted(self, session, victim_auth, victim_case_id):
+        r = session.get(f"{API}/cases/{victim_case_id}/attachments", headers=victim_auth["headers"])
+        assert r.status_code == 200
+        lst = r.json()
+        assert len(lst) >= 1
+        for a in lst:
+            assert "encrypted" not in a
+
+    def test_download_attachment_matches(self, session, victim_auth, victim_case_id):
+        aid = victim_auth["att_id"]
+        r = session.get(f"{API}/cases/{victim_case_id}/attachments/{aid}", headers=victim_auth["headers"])
+        assert r.status_code == 200
+        assert r.json()["data_b64"] == victim_auth["att_data"]
+
+    def test_too_large_413(self, session, victim_auth, victim_case_id):
+        big = "A" * 8_000_001
+        r = session.post(f"{API}/cases/{victim_case_id}/attachments", headers=victim_auth["headers"], json={
+            "filename": "big.bin", "content_type": "application/octet-stream", "data_b64": big,
+        })
+        assert r.status_code == 413
+
+    def test_missing_att_id_404(self, session, victim_auth, victim_case_id):
+        r = session.get(f"{API}/cases/{victim_case_id}/attachments/{uuid.uuid4()}", headers=victim_auth["headers"])
+        assert r.status_code == 404
+
+    def test_other_victim_forbidden(self, session, victim_case_id):
+        # new victim account
+        s2 = requests.Session()
+        s2.headers.update({"Content-Type": "application/json"})
+        r = s2.post(f"{API}/auth/request-otp", json={"phone": "+911234500001", "email": f"TEST_other_{uuid.uuid4().hex[:6]}@x.com"})
+        d = r.json(); sid = d["session_id"]
+        s2.post(f"{API}/auth/verify-mobile", json={"session_id": sid, "code": d["dev_mobile_otp"]})
+        v = s2.post(f"{API}/auth/verify-email", json={"session_id": sid, "code": d["dev_email_otp"]}).json()
+        hdr = {"Authorization": f"Bearer {v['token']}"}
+        r2 = s2.get(f"{API}/cases/{victim_case_id}/attachments", headers=hdr)
+        assert r2.status_code == 403
+        r3 = s2.post(f"{API}/cases/{victim_case_id}/attachments", headers={**hdr, "Content-Type": "application/json"}, json={
+            "filename": "x.txt", "content_type": "text/plain", "data_b64": "QQ=="
+        })
+        assert r3.status_code == 403
+
+
+# -------- Export Zip --------
+import io as _io
+import zipfile as _zf
+
+
+class TestExport:
+    def test_export_zip_structure(self, session, victim_auth, counsellor_auth):
+        plaintext_audio = _b64m.b64encode(b"audio-for-export-bytes").decode()
+        r = session.post(f"{API}/cases", headers=victim_auth["headers"], json={
+            "category": "caste", "narrative": "Export narrative content",
+            "language": "en", "threat_present": True, "isolation": False,
+            "voice_consent": True, "audio_b64": plaintext_audio,
+        })
+        assert r.status_code == 200
+        cid = r.json()["case_id"]
+        # add one attachment
+        data = _b64m.b64encode(b"evidence file").decode()
+        ra = session.post(f"{API}/cases/{cid}/attachments", headers=victim_auth["headers"], json={
+            "filename": "evidence.txt", "content_type": "text/plain", "data_b64": data,
+        })
+        assert ra.status_code == 200
+        # export as counsellor
+        re_ = session.get(f"{API}/cases/{cid}/export", headers=counsellor_auth["headers"])
+        assert re_.status_code == 200
+        assert re_.headers.get("content-type", "").startswith("application/zip")
+        cd = re_.headers.get("content-disposition", "")
+        assert "attachment" in cd and ".zip" in cd
+        zf = _zf.ZipFile(_io.BytesIO(re_.content))
+        names = zf.namelist()
+        joined = "\n".join(names)
+        assert any(n.endswith("metadata.json") for n in names), joined
+        assert any(n.endswith("complaint-english.txt") for n in names), joined
+        assert any(n.endswith("complaint-hindi.txt") for n in names), joined
+        assert any(n.endswith("narrative.txt") for n in names), joined
+        assert any(n.endswith("README.txt") for n in names), joined
+        assert any("/attachments/" in n for n in names), joined
+        assert any(n.endswith("audio.webm") for n in names), joined
+
+    def test_export_forbidden_for_other_victim(self, session, victim_auth, counsellor_auth):
+        # create case as our victim
+        r = session.post(f"{API}/cases", headers=victim_auth["headers"], json={
+            "category": "caste", "narrative": "forbid test", "language": "en",
+            "threat_present": False, "isolation": False,
+        })
+        cid = r.json()["case_id"]
+        # new victim
+        s2 = requests.Session(); s2.headers.update({"Content-Type": "application/json"})
+        r1 = s2.post(f"{API}/auth/request-otp", json={"phone": "+911234500002", "email": f"TEST_fv_{uuid.uuid4().hex[:6]}@x.com"})
+        d = r1.json(); sid = d["session_id"]
+        s2.post(f"{API}/auth/verify-mobile", json={"session_id": sid, "code": d["dev_mobile_otp"]})
+        v = s2.post(f"{API}/auth/verify-email", json={"session_id": sid, "code": d["dev_email_otp"]}).json()
+        hdr = {"Authorization": f"Bearer {v['token']}"}
+        r2 = s2.get(f"{API}/cases/{cid}/export", headers=hdr)
+        assert r2.status_code == 403
+
+
+# -------- Audit log entries for new actions --------
+class TestAuditEntries:
+    def test_new_action_entries_exist(self, session, supervisor_auth):
+        r = session.get(f"{API}/supervisor/audit-log", headers=supervisor_auth["headers"])
+        assert r.status_code == 200
+        logs = r.json()
+        actions = {l.get("action") for l in logs}
+        for a in ["case_create", "escalate", "attachment_add", "attachment_download", "export_pack", "audio_play", "push_subscribe"]:
+            assert a in actions, f"missing audit action: {a}; have {actions}"

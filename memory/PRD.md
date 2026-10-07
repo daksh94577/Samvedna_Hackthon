@@ -66,3 +66,17 @@ SIH 26093 · NHAA 14566: Build a fully working, mobile-first web app prototype f
 - **Full Indic translations**: 7 extra UI dicts added (bn, mr, gu, pa, ta, te, kn) via `lib/i18n_indic.js`, merged into `DICTS` with English fallback for missing keys.
 - **PWA installable**: `manifest.json` (short_name "Samvedna", theme #4A5A1E, start_url, shortcuts for New Case + Call 14566), `sw.js` service worker (shell cache-first + stale-while-revalidate for /api/support-directory + /api/cases), programmatic icon-192 + icon-512 PNGs generated via PIL (olive bg + gold S circle). `index.html` registers SW on non-localhost and preloads Noto Sans + Serif in Devanagari, Bengali, Tamil, Telugu, Kannada, Gurmukhi, Gujarati scripts.
 - **Testing**: 24/24 backend tests pass (iteration_2.json). Audio encryption verified: Fernet token at rest, decrypt returns identical base64, 403 for victim, null for empty, audit entries created.
+
+## Update 2026-02 (iteration 3)
+- **Web Push**: `pywebpush` + `py-vapid` on backend. `/api/push/public-key`, `/api/push/subscribe` (counsellor/supervisor), `/api/push/test`. `push_util.py::broadcast_critical()` auto-fires when any new case has `assessment.level == "Critical"`. Service worker handles `push` + `notificationclick` events, opens `/counsellor/{case_id}`. Toggle UI in CounsellorQueuePage via `Enable Alerts / Test Alert` button.
+- **Case Attachments**: new endpoints `POST /api/cases/{id}/attachments` (encrypted via same Fernet pipeline, 8 MB cap, stored in `attachments` array on the case doc), `GET .../attachments` (metadata-only), `GET .../attachments/{att_id}` (decrypt + return data_b64). ComplaintPage shows per-case list with "+ Attach" and "Decrypt & Save" buttons. Only owner / counsellor / supervisor can read; audit entries for every add/download.
+- **Multilingual Voice readout**: new `lib/voice.js` with `speakText(text, langCode)` mapping 10 lang codes to BCP-47 voices. "Listen / Stop" button added on AssessmentPage (reads SVI + factors + "what this means") and NextStepsPage (reads all 4 numbered actions). Uses `SpeechSynthesisUtterance`.
+- **Govt Export Pack**: new `GET /api/cases/{id}/export` returns `application/zip` streaming response with:
+  - `metadata.json` — assessment, stages, timeline, location, complainant (safe fields), notes, disclaimer
+  - `complaint-english.txt` + `complaint-hindi.txt` — bilingual draft
+  - `narrative.txt` — raw transcript
+  - `audio.webm` — decrypted recording (if any)
+  - `attachments/` — decrypted proof files
+  - `README.txt` — usage note + SC/ST (PoA) Act disclaimer
+  ComplaintPage adds `Download .zip` + `Email Handoff` (opens mailto to nalsa-dc@nic.in with pre-filled subject/body).
+- **Testing**: 38/38 backend tests pass (iteration_3.json). 14 new tests for push, attachments, export zip, RBAC, audit coverage. No regressions.
