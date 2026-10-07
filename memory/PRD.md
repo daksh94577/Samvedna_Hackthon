@@ -60,3 +60,9 @@ SIH 26093 · NHAA 14566: Build a fully working, mobile-first web app prototype f
 - DEV MODE OTPs returned in request-otp response + shown in UI.
 - Counsellor: priya.counsellor@samvedna.in
 - Supervisor: verma.supervisor@samvedna.in
+
+## Update 2026-02 (iteration 2)
+- **AES-256 audio-at-rest**: new `crypto_util.py` with Fernet (AES-128-CBC + HMAC-SHA256, authenticated). `AUDIO_ENC_KEY` persisted in backend/.env. New `GET /api/cases/{case_id}/audio` endpoint (counsellor/supervisor-only, 403 for victim) decrypts and returns the base64 audio; every call writes an `audio_play` audit entry. `CounsellorDetailPage` added a "Play Encrypted Audio" button + `<audio>` playback with blob URL.
+- **Full Indic translations**: 7 extra UI dicts added (bn, mr, gu, pa, ta, te, kn) via `lib/i18n_indic.js`, merged into `DICTS` with English fallback for missing keys.
+- **PWA installable**: `manifest.json` (short_name "Samvedna", theme #4A5A1E, start_url, shortcuts for New Case + Call 14566), `sw.js` service worker (shell cache-first + stale-while-revalidate for /api/support-directory + /api/cases), programmatic icon-192 + icon-512 PNGs generated via PIL (olive bg + gold S circle). `index.html` registers SW on non-localhost and preloads Noto Sans + Serif in Devanagari, Bengali, Tamil, Telugu, Kannada, Gurmukhi, Gujarati scripts.
+- **Testing**: 24/24 backend tests pass (iteration_2.json). Audio encryption verified: Fernet token at rest, decrypt returns identical base64, 403 for victim, null for empty, audit entries created.

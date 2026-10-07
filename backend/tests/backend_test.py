@@ -253,3 +253,92 @@ class TestSupport:
         r = session.get(f"{API}/support-directory")
         assert r.status_code == 200
         assert len(r.json()) == 6
+
+
+
+# -------- Audio encryption / playback --------
+class TestAudio:
+    def test_audio_stored_encrypted_and_decrypt(self, session, victim_auth, counsellor_auth):
+        import base64
+        plaintext = base64.b64encode(b"hello-samvedna-audio-bytes").decode()
+        payload = {
+            "category": "caste",
+            "narrative": "Audio evidence attached.",
+            "language": "en",
+            "threat_present": False,
+            "isolation": False,
+            "voice_consent": True,
+            "audio_b64": plaintext,
+        }
+        r = session.post(f"{API}/cases", headers=victim_auth["headers"], json=payload)
+        assert r.status_code == 200, r.text
+        cid = r.json()["case_id"]
+        # Verify DB contents via a direct Mongo-style check: encrypted field must not be returned to victim
+        assert "audio_encrypted" not in r.json()
+
+        # Victim cannot access audio endpoint
+        rv = session.get(f"{API}/cases/{cid}/audio", headers=victim_auth["headers"])
+        assert rv.status_code == 403
+
+        # Counsellor can decrypt and gets plaintext back
+        rc = session.get(f"{API}/cases/{cid}/audio", headers=counsellor_auth["headers"])
+        assert rc.status_code == 200, rc.text
+        body = rc.json()
+        assert body.get("audio_b64") == plaintext
+
+    def test_audio_null_when_absent(self, session, victim_auth, counsellor_auth):
+        payload = {
+            "category": "property",
+            "narrative": "No audio attached here.",
+            "language": "en",
+            "threat_present": False,
+            "isolation": False,
+        }
+        r = session.post(f"{API}/cases", headers=victim_auth["headers"], json=payload)
+        assert r.status_code == 200
+        cid = r.json()["case_id"]
+        rc = session.get(f"{API}/cases/{cid}/audio", headers=counsellor_auth["headers"])
+        assert rc.status_code == 200
+        assert rc.json() == {"audio_b64": None}
+
+    def test_audio_db_token_is_fernet(self, session, victim_auth):
+        """Verify DB-stored token looks like a Fernet token (starts with 'gAAAAA')."""
+        import base64
+        from pymongo import MongoClient
+        from pathlib import Path
+        env = {}
+        for line in Path("/app/backend/.env").read_text().splitlines():
+            if "=" in line and not line.strip().startswith("#"):
+                k, v = line.split("=", 1)
+                env[k.strip()] = v.strip().strip('"')
+        mc = MongoClient(env["MONGO_URL"])
+        dbh = mc[env["DB_NAME"]]
+        plaintext = base64.b64encode(b"fernet-check-bytes").decode()
+        r = session.post(f"{API}/cases", headers=victim_auth["headers"], json={
+            "category": "caste", "narrative": "x", "language": "en",
+            "threat_present": False, "isolation": False, "audio_b64": plaintext,
+        })
+        assert r.status_code == 200
+        cid = r.json()["case_id"]
+        doc = dbh.cases.find_one({"case_id": cid})
+        enc = doc.get("audio_encrypted")
+        assert enc, "audio_encrypted missing in DB"
+        assert enc != plaintext, "audio stored in plaintext!"
+        assert enc.startswith("gAAAAA"), f"not a Fernet token: {enc[:20]}"
+
+    def test_audio_play_audit_log(self, session, victim_auth, counsellor_auth, supervisor_auth):
+        import base64
+        plaintext = base64.b64encode(b"audit-check").decode()
+        r = session.post(f"{API}/cases", headers=victim_auth["headers"], json={
+            "category": "caste", "narrative": "x", "language": "en",
+            "threat_present": False, "isolation": False, "audio_b64": plaintext,
+        })
+        cid = r.json()["case_id"]
+        rc = session.get(f"{API}/cases/{cid}/audio", headers=counsellor_auth["headers"])
+        assert rc.status_code == 200
+        # Fetch audit log as supervisor
+        ra = session.get(f"{API}/supervisor/audit-log", headers=supervisor_auth["headers"])
+        assert ra.status_code == 200
+        logs = ra.json()
+        matching = [l for l in logs if l.get("action") == "audio_play" and l.get("target") == cid]
+        assert len(matching) >= 1, "audio_play audit entry missing"
