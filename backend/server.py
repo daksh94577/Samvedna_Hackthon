@@ -24,6 +24,7 @@ from email.message import EmailMessage
 
 from svi_engine import compute_svi
 from complaint_gen import build_draft, CATEGORY_LABEL
+from crypto_util import encrypt_audio, decrypt_audio
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -374,7 +375,7 @@ def _case_id() -> str:
 def _pseudo_encrypt(data: Optional[str]) -> Optional[str]:
     if not data:
         return None
-    return "ENC::" + hashlib.sha256(data.encode()).hexdigest()[:32] + "::" + data[:200]
+    return encrypt_audio(data)
 
 
 @api.post("/cases")
@@ -526,6 +527,25 @@ async def get_draft(case_id: str, current=Depends(get_current_user)):
     await db.cases.update_one({"case_id": case_id}, {"$set": {"stage": "Drafted", "updated_at": now_iso(), "stages_completed": stages}})
     await audit(current["id"], "draft_view", case["id"])
     return draft
+
+
+# ---------- Audio playback (counsellor only) ----------
+@api.get("/cases/{case_id}/audio")
+async def get_audio(case_id: str, current=Depends(get_current_user)):
+    if current["role"] not in ("counsellor", "supervisor"):
+        raise HTTPException(status_code=403, detail="Not permitted")
+    case = await db.cases.find_one({"case_id": case_id}, {"_id": 0, "audio_encrypted": 1})
+    if not case:
+        raise HTTPException(status_code=404, detail="Not found")
+    token = case.get("audio_encrypted")
+    if not token:
+        return {"audio_b64": None}
+    try:
+        b64 = decrypt_audio(token)
+    except ValueError:
+        raise HTTPException(status_code=500, detail="Audio corrupt")
+    await audit(current["id"], "audio_play", case_id)
+    return {"audio_b64": b64}
 
 
 # ---------- Support Directory ----------

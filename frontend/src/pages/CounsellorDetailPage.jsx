@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import { toast } from "sonner";
 import SVIGauge from "@/components/SVIGauge";
 import CaseTimeline from "@/components/CaseTimeline";
-import { Check, Flag, Megaphone, NotebookPen } from "lucide-react";
+import { Check, Flag, Megaphone, NotebookPen, Play } from "lucide-react";
 
 export default function CounsellorDetailPage() {
     const { caseId } = useParams();
@@ -14,10 +14,24 @@ export default function CounsellorDetailPage() {
     const [note, setNote] = useState("");
     const [escalateTarget, setEscalateTarget] = useState("counselling");
     const [busy, setBusy] = useState(false);
+    const [audioUrl, setAudioUrl] = useState(null);
 
     const load = () => api.get(`/cases/${caseId}`).then((r) => setC(r.data));
 
     useEffect(() => { load(); /* eslint-disable-next-line */ }, [caseId]);
+
+    const playAudio = async () => {
+        try {
+            const r = await api.get(`/cases/${caseId}/audio`);
+            if (!r.data.audio_b64) return toast.info("No audio recorded for this case");
+            const bin = atob(r.data.audio_b64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            const blob = new Blob([bytes], { type: "audio/webm" });
+            setAudioUrl(URL.createObjectURL(blob));
+            toast.success("Audio decrypted · playing");
+        } catch { toast.error("Failed to decrypt audio"); }
+    };
 
     const accept = async () => {
         setBusy(true);
@@ -54,6 +68,20 @@ export default function CounsellorDetailPage() {
                 <div className="mt-4 bg-white border border-sand rounded-2xl p-4">
                     <div className="font-serif font-bold text-olive mb-2">Narrative</div>
                     <div className="text-sm text-foreground/85 whitespace-pre-wrap" data-testid="case-narrative">{c.narrative}</div>
+                    {c.voice_consent && (
+                        <div className="mt-3">
+                            <button
+                                data-testid="play-audio-btn"
+                                onClick={playAudio}
+                                className="press inline-flex items-center gap-2 bg-olive text-white rounded-full px-4 py-2 text-xs font-medium"
+                            >
+                                <Play size={14}/> Play Encrypted Audio
+                            </button>
+                            {audioUrl && (
+                                <audio controls src={audioUrl} className="mt-3 w-full" data-testid="audio-player" />
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 <div className="mt-4 bg-white border border-sand rounded-2xl p-4">

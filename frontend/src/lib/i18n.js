@@ -249,6 +249,17 @@ const hinglish = {
 
 export const DICTS = { en, hi, hinglish };
 
+// Merge Indic translations (fall back to en for missing keys)
+import { bn, mr, gu, pa, ta, te, kn } from "./i18n_indic";
+const mergeFallback = (base, overrides) => ({ ...base, ...overrides });
+DICTS.bn = mergeFallback(en, bn);
+DICTS.mr = mergeFallback(en, mr);
+DICTS.gu = mergeFallback(en, gu);
+DICTS.pa = mergeFallback(en, pa);
+DICTS.ta = mergeFallback(en, ta);
+DICTS.te = mergeFallback(en, te);
+DICTS.kn = mergeFallback(en, kn);
+
 export function t(code, key) {
     const dict = DICTS[code] || DICTS[en] || en;
     return (dict && dict[key]) || en[key] || key;
