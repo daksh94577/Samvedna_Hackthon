@@ -3,11 +3,15 @@ import MobileFrame from "@/components/MobileFrame";
 import { useNavigate } from "react-router-dom";
 import { useIntakeStore } from "@/pages/IntakeStore";
 import SVIGauge from "@/components/SVIGauge";
-import { ScrollText, HeartHandshake, Info } from "lucide-react";
+import { useApp } from "@/context/AppContext";
+import { speakText, stopSpeaking } from "@/lib/voice";
+import { ScrollText, HeartHandshake, Info, Volume2, Square } from "lucide-react";
 
 export default function AssessmentPage() {
     const nav = useNavigate();
     const s = useIntakeStore();
+    const { lang } = useApp();
+    const [speaking, setSpeaking] = React.useState(false);
     const a = s.assessment;
     if (!a) {
         return (
@@ -24,11 +28,31 @@ export default function AssessmentPage() {
         Low: "Your account is logged. We can still help you file a complaint and connect with support services if things escalate.",
     }[a.level];
 
+    const listen = () => {
+        if (speaking) {
+            stopSpeaking();
+            setSpeaking(false);
+            return;
+        }
+        const factorsText = (a.factors || []).map((f) => f.label).join(", ");
+        const script = `Your assessment: Severe Vulnerability Index ${Math.round(a.svi)}, level ${a.level}. Top factors: ${factorsText}. ${whatMeans}`;
+        if (speakText(script, lang || "en")) setSpeaking(true);
+    };
+
     return (
         <MobileFrame showBack>
             <div className="px-5 pt-5 pb-28 animate-fade-up">
                 <div className="text-[11px] font-semibold uppercase tracking-widest text-brown">Step 4 of 4 · Assessment</div>
-                <h2 className="font-serif font-black text-2xl text-olive leading-tight mt-1">Your Assessment</h2>
+                <div className="flex items-center justify-between">
+                    <h2 className="font-serif font-black text-2xl text-olive leading-tight mt-1">Your Assessment</h2>
+                    <button
+                        data-testid="listen-assessment"
+                        onClick={listen}
+                        className={`press flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium ${speaking ? "bg-deepred text-white" : "bg-olive text-white"}`}
+                    >
+                        {speaking ? <Square size={12}/> : <Volume2 size={12}/>} {speaking ? "Stop" : "Listen"}
+                    </button>
+                </div>
                 <div className="hindi text-sm text-brown">आपका आकलन</div>
 
                 <div className="mt-4 bg-white border border-sand rounded-[20px] p-5 shadow-sm">

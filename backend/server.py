@@ -18,6 +18,7 @@ import uuid
 import hashlib
 import random
 import logging
+import json
 import jwt
 import smtplib
 from email.message import EmailMessage
@@ -25,6 +26,11 @@ from email.message import EmailMessage
 from svi_engine import compute_svi
 from complaint_gen import build_draft, CATEGORY_LABEL
 from crypto_util import encrypt_audio, decrypt_audio
+from push_util import broadcast_critical, send_push
+import io
+import zipfile
+import base64 as _b64
+from fastapi.responses import StreamingResponse
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -419,6 +425,10 @@ async def create_case(body: CaseCreate, current=Depends(get_current_user)):
             "created_at": now_iso(),
             "read": False,
         })
+        try:
+            await broadcast_critical(db, case)
+        except Exception as _e:
+            log.error(f"push broadcast fail: {_e}")
 
     case.pop("audio_encrypted", None)
     case.pop("_id", None)
@@ -546,6 +556,187 @@ async def get_audio(case_id: str, current=Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Audio corrupt")
     await audit(current["id"], "audio_play", case_id)
     return {"audio_b64": b64}
+
+
+# ---------- Push Subscriptions ----------
+class PushSub(BaseModel):
+    subscription: Dict[str, Any]
+
+
+@api.get("/push/public-key")
+async def push_public_key():
+    return {"public_key": os.environ.get("VAPID_PUBLIC_KEY", "")}
+
+
+@api.post("/push/subscribe")
+async def push_subscribe(body: PushSub, current=Depends(get_current_user)):
+    if current["role"] not in ("counsellor", "supervisor"):
+        raise HTTPException(status_code=403, detail="Not permitted")
+    endpoint = body.subscription.get("endpoint")
+    if not endpoint:
+        raise HTTPException(status_code=400, detail="Missing endpoint")
+    await db.push_subscriptions.update_one(
+        {"endpoint": endpoint},
+        {"$set": {
+            "endpoint": endpoint,
+            "user_id": current["id"],
+            "role": current["role"],
+            "subscription": body.subscription,
+            "updated_at": now_iso(),
+        }},
+        upsert=True,
+    )
+    await audit(current["id"], "push_subscribe", endpoint[:60])
+    return {"ok": True}
+
+
+@api.post("/push/test")
+async def push_test(current=Depends(get_current_user)):
+    if current["role"] not in ("counsellor", "supervisor"):
+        raise HTTPException(status_code=403, detail="Not permitted")
+    subs = await db.push_subscriptions.find({"user_id": current["id"]}, {"_id": 0}).to_list(10)
+    sent = 0
+    for s in subs:
+        if send_push(s["subscription"], {"title": "Samvedna Test Push", "body": "This is a test notification.", "url": "/counsellor"}):
+            sent += 1
+    return {"ok": True, "sent": sent, "subs": len(subs)}
+
+
+# ---------- Attachments (encrypted) ----------
+class AttachmentCreate(BaseModel):
+    filename: str
+    content_type: str
+    data_b64: str  # raw file b64 (not data-url)
+
+
+@api.post("/cases/{case_id}/attachments")
+async def add_attachment(case_id: str, body: AttachmentCreate, current=Depends(get_current_user)):
+    case = await db.cases.find_one({"case_id": case_id}, {"_id": 0, "user_id": 1})
+    if not case:
+        raise HTTPException(status_code=404, detail="Not found")
+    if current["role"] == "victim" and case["user_id"] != current["id"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if len(body.data_b64) > 8_000_000:  # ~6 MB raw
+        raise HTTPException(status_code=413, detail="File too large (max ~6 MB)")
+    att = {
+        "id": str(uuid.uuid4()),
+        "filename": body.filename,
+        "content_type": body.content_type,
+        "size_b64": len(body.data_b64),
+        "encrypted": encrypt_audio(body.data_b64),  # same AES/Fernet pipeline
+        "uploaded_by": current["id"],
+        "uploaded_at": now_iso(),
+    }
+    await db.cases.update_one({"case_id": case_id}, {"$push": {"attachments": att}})
+    await audit(current["id"], "attachment_add", case_id, {"filename": body.filename})
+    att.pop("encrypted", None)
+    return att
+
+
+@api.get("/cases/{case_id}/attachments")
+async def list_attachments(case_id: str, current=Depends(get_current_user)):
+    case = await db.cases.find_one({"case_id": case_id}, {"_id": 0, "user_id": 1, "attachments": 1})
+    if not case:
+        raise HTTPException(status_code=404, detail="Not found")
+    if current["role"] == "victim" and case["user_id"] != current["id"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    atts = case.get("attachments", []) or []
+    return [{k: v for k, v in a.items() if k != "encrypted"} for a in atts]
+
+
+@api.get("/cases/{case_id}/attachments/{att_id}")
+async def download_attachment(case_id: str, att_id: str, current=Depends(get_current_user)):
+    case = await db.cases.find_one({"case_id": case_id}, {"_id": 0, "user_id": 1, "attachments": 1})
+    if not case:
+        raise HTTPException(status_code=404, detail="Not found")
+    if current["role"] == "victim" and case["user_id"] != current["id"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    for a in (case.get("attachments") or []):
+        if a.get("id") == att_id:
+            try:
+                data_b64 = decrypt_audio(a["encrypted"])
+            except ValueError:
+                raise HTTPException(status_code=500, detail="Attachment corrupt")
+            await audit(current["id"], "attachment_download", case_id, {"filename": a.get("filename")})
+            return {"filename": a["filename"], "content_type": a["content_type"], "data_b64": data_b64}
+    raise HTTPException(status_code=404, detail="Attachment not found")
+
+
+# ---------- Govt Export Pack (zip bundle) ----------
+@api.get("/cases/{case_id}/export")
+async def export_case(case_id: str, current=Depends(get_current_user)):
+    case = await db.cases.find_one({"case_id": case_id}, {"_id": 0})
+    if not case:
+        raise HTTPException(status_code=404, detail="Not found")
+    if current["role"] == "victim" and case["user_id"] != current["id"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    user = await db.users.find_one({"id": case["user_id"]}, {"_id": 0, "name": 1, "phone": 1, "email": 1})
+    user_safe = {"name": user.get("name") if user else "", "phone": user.get("phone") if user else "", "email": user.get("email") if user else ""}
+    draft = build_draft({**case, "user": user_safe})
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Metadata
+        meta = {
+            "case_id": case["case_id"],
+            "category": case["category"],
+            "assessment": case.get("assessment"),
+            "stages_completed": case.get("stages_completed"),
+            "stage": case.get("stage"),
+            "created_at": case.get("created_at"),
+            "updated_at": case.get("updated_at"),
+            "timeline": case.get("timeline"),
+            "location": case.get("location"),
+            "threat_present": case.get("threat_present"),
+            "isolation": case.get("isolation"),
+            "complainant": user_safe,
+            "notes": case.get("notes", []),
+            "disclaimer": "Samvedna / संवेदना — SIH 26093 · NHAA 14566. Informational draft, not legal advice.",
+        }
+        zf.writestr(f"{case_id}/metadata.json", json.dumps(meta, ensure_ascii=False, indent=2))
+        zf.writestr(f"{case_id}/complaint-english.txt", draft["english"])
+        zf.writestr(f"{case_id}/complaint-hindi.txt", draft["hindi"])
+
+        # Narrative transcript
+        zf.writestr(f"{case_id}/narrative.txt", case.get("narrative", "") or "")
+
+        # Audio (decrypted for the bundle, with warning)
+        if case.get("audio_encrypted"):
+            try:
+                audio_b64 = decrypt_audio(case["audio_encrypted"])
+                zf.writestr(f"{case_id}/audio.webm", _b64.b64decode(audio_b64))
+            except Exception:
+                zf.writestr(f"{case_id}/audio.error.txt", "Audio could not be decrypted.")
+
+        # Attachments
+        for a in (case.get("attachments") or []):
+            try:
+                data_b64 = decrypt_audio(a["encrypted"])
+                raw = _b64.b64decode(data_b64)
+                safe_name = a["filename"].replace("/", "_").replace("\\", "_")
+                zf.writestr(f"{case_id}/attachments/{safe_name}", raw)
+            except Exception:
+                pass
+
+        # README
+        zf.writestr(f"{case_id}/README.txt",
+            "SAMVEDNA EVIDENCE PACK\n"
+            f"Case #{case_id} · generated {now_iso()}\n\n"
+            "Contents:\n"
+            " - metadata.json : case + assessment metadata\n"
+            " - complaint-english.txt / complaint-hindi.txt : bilingual complaint draft\n"
+            " - narrative.txt : victim's narrative transcript\n"
+            " - audio.webm : voice recording (if provided)\n"
+            " - attachments/ : encrypted-at-rest proof files, decrypted for this pack\n\n"
+            "This evidence pack is intended for legal-aid officers and law-enforcement handoff.\n"
+            "Please handle with appropriate confidentiality under the SC/ST (PoA) Act, 1989.\n"
+        )
+
+    buf.seek(0)
+    await audit(current["id"], "export_pack", case_id)
+    headers = {"Content-Disposition": f'attachment; filename="Samvedna-{case_id}.zip"'}
+    return StreamingResponse(iter([buf.getvalue()]), media_type="application/zip", headers=headers)
 
 
 # ---------- Support Directory ----------

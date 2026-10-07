@@ -4,11 +4,28 @@ import { useNavigate } from "react-router-dom";
 import { useIntakeStore } from "@/pages/IntakeStore";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
-import { PhoneCall, UserCheck, FileText, ClipboardList } from "lucide-react";
+import { useApp } from "@/context/AppContext";
+import { speakText, stopSpeaking } from "@/lib/voice";
+import { PhoneCall, UserCheck, FileText, ClipboardList, Volume2, Square } from "lucide-react";
 
 export default function NextStepsPage() {
     const nav = useNavigate();
     const s = useIntakeStore();
+    const { lang } = useApp();
+    const [speaking, setSpeaking] = React.useState(false);
+
+    const steps = [
+        { n: 1, title: "Secure yourself", body: "Move to a safe place or trusted neighbour; keep your phone charged." , hi: "सुरक्षित जगह पर जाएँ" },
+        { n: 2, title: "Preserve evidence", body: "Save messages, photos, medical reports — avoid washing clothes in physical cases.", hi: "सबूत सुरक्षित रखें" },
+        { n: 3, title: "Talk to a counsellor", body: "A senior counsellor can guide you in your language and prepare paperwork.", hi: "काउंसलर से बात करें" },
+        { n: 4, title: "File the drafted complaint", body: "We'll prepare a bilingual complaint you can take to the police station or legal aid centre.", hi: "मसौदा शिकायत दर्ज कराएँ" },
+    ];
+
+    const listenSteps = () => {
+        if (speaking) { stopSpeaking(); setSpeaking(false); return; }
+        const script = "Next steps. " + steps.map((x) => `Step ${x.n}. ${x.title}. ${x.body}`).join(" ");
+        if (speakText(script, lang || "en")) setSpeaking(true);
+    };
 
     const connectCounsellor = async () => {
         try {
@@ -23,16 +40,20 @@ export default function NextStepsPage() {
         <MobileFrame showBack>
             <div className="px-5 pt-5 pb-28 animate-fade-up">
                 <div className="text-[11px] font-semibold uppercase tracking-widest text-brown">Guidance</div>
-                <h2 className="font-serif font-black text-2xl text-olive leading-tight mt-1">Next Steps</h2>
+                <div className="flex items-center justify-between">
+                    <h2 className="font-serif font-black text-2xl text-olive leading-tight mt-1">Next Steps</h2>
+                    <button
+                        data-testid="listen-steps"
+                        onClick={listenSteps}
+                        className={`press flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium ${speaking ? "bg-deepred text-white" : "bg-olive text-white"}`}
+                    >
+                        {speaking ? <Square size={12}/> : <Volume2 size={12}/>} {speaking ? "Stop" : "Listen"}
+                    </button>
+                </div>
                 <div className="hindi text-sm text-brown">अगले कदम</div>
 
                 <ol className="mt-4 space-y-3">
-                    {[
-                        { n: 1, title: "Secure yourself", body: "Move to a safe place or trusted neighbour; keep your phone charged." , hi: "सुरक्षित जगह पर जाएँ" },
-                        { n: 2, title: "Preserve evidence", body: "Save messages, photos, medical reports — avoid washing clothes in physical cases.", hi: "सबूत सुरक्षित रखें" },
-                        { n: 3, title: "Talk to a counsellor", body: "A senior counsellor can guide you in your language and prepare paperwork.", hi: "काउंसलर से बात करें" },
-                        { n: 4, title: "File the drafted complaint", body: "We'll prepare a bilingual complaint you can take to the police station or legal aid centre.", hi: "मसौदा शिकायत दर्ज कराएँ" },
-                    ].map((x) => (
+                    {steps.map((x) => (
                         <li key={x.n} className="bg-white border border-sand rounded-2xl p-4 flex gap-3">
                             <div className="h-8 w-8 rounded-full bg-olive text-white flex items-center justify-center font-serif font-bold">{x.n}</div>
                             <div className="flex-1">

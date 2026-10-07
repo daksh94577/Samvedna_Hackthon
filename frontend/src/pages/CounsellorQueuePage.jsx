@@ -4,7 +4,9 @@ import { useApp } from "@/context/AppContext";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { levelColor } from "@/components/SVIGauge";
-import { AlertTriangle, Headphones, LogOut, Users } from "lucide-react";
+import { AlertTriangle, Headphones, LogOut, Users, Bell, BellRing } from "lucide-react";
+import { enablePush, isPushEnabled, testPush } from "@/lib/push";
+import { toast } from "sonner";
 
 export default function CounsellorQueuePage() {
     const { user, logout } = useApp();
@@ -12,11 +14,28 @@ export default function CounsellorQueuePage() {
     const [cases, setCases] = useState([]);
     const [alerts, setAlerts] = useState([]);
     const [filter, setFilter] = useState("all"); // all | Critical | High | Moderate | Low
+    const [pushOn, setPushOn] = useState(false);
 
     useEffect(() => {
         api.get("/counsellor/queue").then((r) => setCases(r.data)).catch(() => {});
         api.get("/counsellor/alerts").then((r) => setAlerts(r.data)).catch(() => {});
+        isPushEnabled().then(setPushOn);
     }, []);
+
+    const togglePush = async () => {
+        try {
+            if (pushOn) {
+                const r = await testPush();
+                toast.success(`Test push sent to ${r.sent}/${r.subs} subscription(s)`);
+            } else {
+                await enablePush();
+                setPushOn(true);
+                toast.success("Push alerts enabled · critical cases will notify you");
+            }
+        } catch (e) {
+            toast.error(e.message || "Push setup failed");
+        }
+    };
 
     const list = filter === "all" ? cases : cases.filter((c) => c.assessment?.level === filter);
 
@@ -30,6 +49,10 @@ export default function CounsellorQueuePage() {
                         <div className="hindi text-sm text-brown">प्राथमिकता सूची</div>
                     </div>
                     <div className="flex items-center gap-2">
+                        <button data-testid="toggle-push" onClick={togglePush} className={`press text-xs rounded-full px-3 py-1.5 flex items-center gap-1 ${pushOn ? "bg-wa text-white" : "bg-white border border-sand text-brown"}`}>
+                            {pushOn ? <BellRing size={13}/> : <Bell size={13}/>}
+                            {pushOn ? "Test Alert" : "Enable Alerts"}
+                        </button>
                         {user?.role === "supervisor" && (
                             <button data-testid="go-supervisor" onClick={() => nav("/supervisor")} className="press text-xs bg-olive text-white rounded-full px-3 py-1.5">Audit Log</button>
                         )}
