@@ -1,0 +1,105 @@
+{
+  "theme": "light",
+  "typography": {
+    "headings": {
+      "family": "Noto Serif, 'Noto Serif Devanagari', serif",
+      "weight": "font-bold to font-black",
+      "usage": "Headers, SVI Scores, Key Figures, Brand Name (Samvedna / संवेदना)"
+    },
+    "body": {
+      "family": "Noto Sans, 'Noto Sans Devanagari', sans-serif",
+      "weight": "font-normal to font-medium",
+      "usage": "Paragraphs, Buttons, Captions, General text"
+    },
+    "labels": {
+      "style": "Hinglish bilingual labels (e.g., Aage Badhein / Continue →), Hindi subtitles under each main title.",
+      "tracking": "tracking-tight for headings, tracking-normal for body"
+    }
+  },
+  "colors": {
+    "background": {
+      "primary": "#F7EFE2",
+      "card": "#FFFFFF"
+    },
+    "brand": {
+      "olive": "#4A5A1E",
+      "gold": "#B8862B",
+      "brown": "#7A4A12",
+      "terracotta": "#C4694A",
+      "deep_red": "#8B2A1A",
+      "whatsapp_green": "#25C05F"
+    },
+    "border": "#D3C7AC",
+    "text": {
+      "primary": "#1A1A1A",
+      "secondary": "#4A4A4A",
+      "on_dark": "#FFFFFF"
+    },
+    "svi_levels": {
+      "low": "#25C05F",
+      "moderate": "#B8862B",
+      "high": "#C4694A",
+      "critical": "#8B2A1A"
+    }
+  },
+  "visual_enhancers": {
+    "borders": "1px solid #D3C7AC on all white cards",
+    "radius": "rounded-[16px] to rounded-[20px] for major cards, rounded-full for chips/buttons",
+    "shadows": "shadow-sm for resting cards, shadow-md on hover. The main mobile container gets a shadow-2xl for depth against the desktop background."
+  },
+  "layouts": {
+    "app_wrapper": "A centered mobile frame for web view. `max-w-[420px] mx-auto min-h-screen relative shadow-2xl bg-[#F7EFE2] overflow-x-hidden`. Desktop users see a phone-sized app in the center.",
+    "page_padding": "px-4 py-6 md:px-6",
+    "spacing_scale": "Use generous internal padding for cards (p-4 to p-6) to maintain breathing room."
+  },
+  "grids": {
+    "toolkit_tiles": "grid-cols-2 gap-3 or gap-4 for dashboard support directories and history."
+  },
+  "components": {
+    "header": "Sticky top, z-50, backdrop-blur-xl bg-[#F7EFE2]/90 with border-b border-[#D3C7AC]. Contains logo 'Samvedna / संवेदना' and Language Toggle.",
+    "helpline_banner": "Full width inside wrapper, bg-[#8B2A1A] text-white, prominent tel:14566 link, 24/7 indicator.",
+    "hero_card": "bg-[#4A5A1E] text-white, rounded-[20px], p-6. Used for 'Describe a New Problem'.",
+    "buttons": {
+      "primary": "bg-[#B8862B] text-white rounded-full py-3 px-6 font-medium hover:bg-[#a37625] transition-colors",
+      "secondary": "bg-[#7A4A12] text-white rounded-full py-3 px-6 font-medium hover:bg-[#633a0d] transition-colors",
+      "urgent": "bg-[#C4694A] text-white rounded-full py-3 px-6 font-medium"
+    },
+    "bottom_nav": "Fixed bottom, z-50, max-w-[420px] mx-auto w-full bg-white border-t border-[#D3C7AC] pb-safe. 4 items (Guidance, Thread, Helpline, Profile). Active state uses a gold (#B8862B) pill background with white text and icon.",
+    "otp_boxes": "Flex row of 4 boxes per OTP (mobile + email). w-12 h-12 text-center text-xl border border-[#D3C7AC] rounded-xl focus:border-[#4A5A1E] focus:ring-1 focus:ring-[#4A5A1E].",
+    "status_chips": "Inline-flex, rounded-full, px-3 py-1 text-xs font-medium. Colors map to SVI level.",
+    "svi_gauge": "Visual indicator 0-100. Can be a half-doughnut chart or a segmented linear progress bar showing Low/Moderate/High/Critical zones. Highlight current score clearly.",
+    "case_timeline": "Vertical stepper component. Green (#25C05F) checkmarks for completed steps, dashed lines connecting nodes."
+  },
+  "motion": {
+    "page_transitions": "Subtle fade-in and slide-up (y: 10, opacity: 0 to 1).",
+    "micro_interactions": "Hover states on cards (-translate-y-1), gentle scale (scale: 0.98) on button taps.",
+    "waveform": "For voice intake, use CSS animations (scaleY) on small vertical bars to simulate active listening."
+  },
+  "accessibility": {
+    "contrast": "Ensure text over the olive and red backgrounds meets APCA standards. Use white text.",
+    "data_testids": "All interactive elements MUST have `data-testid` (e.g., `data-testid=\"language-toggle\"`, `data-testid=\"otp-input-1\"`).",
+    "voice_assist": "Include subtle audio triggers/synthesizer hooks for accessibility as requested."
+  },
+  "icons": {
+    "library": "lucide-react",
+    "usage": "Use stroke-width 2. Do NOT use emojis. Strict professional and compassionate iconography."
+  },
+  "media": {
+    "hero_image": {
+      "url": "https://images.unsplash.com/photo-1682352689072-7b2c0b8580c2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MDV8MHwxfHNlYXJjaHwxfHxjb21wYXNzaW9ufGVufDB8fHx8MTc5MTQwMzU0N3ww&ixlib=rb-4.1.0&q=85",
+      "description": "Two people holding hands, conveying compassion and support. Use selectively in onboarding or the 'Support Directory' section.",
+      "category": "support_imagery"
+    }
+  },
+  "instructions_to_main_agent": [
+    "You are building a React.js (JavaScript) application. Do NOT use TypeScript (.tsx).",
+    "Construct the layout exclusively inside a `max-w-[420px] mx-auto min-h-screen relative shadow-2xl` container so it looks like a mobile app on desktop.",
+    "Ensure strict adherence to the provided color hex codes. Do NOT use generic Tailwind blues or grays.",
+    "Implement the Dual OTP flow (Mobile + Email) with a 30s resend timer.",
+    "Implement a voice intake UI with a live waveform animation.",
+    "Implement a mock SVI (Severe Vulnerability Index) assessment gauge that outputs a score 0-100.",
+    "Build the multi-step form and the counsellor portal queue as requested.",
+    "Always apply 'data-testid' attributes to key elements for testing."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": "Create depth through layered design elements with z-index hierarchy. You MUST NOT apply universal transition (e.g., transition: all). You MUST NOT center align the app container text (no .App { text-align: center; }). Always use modern button styles (pill-shaped). NEVER use emojis for icons. Use lucide-react. Every interaction needs micro-animations. Use sonner for toasts."
+}
