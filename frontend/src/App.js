@@ -25,6 +25,8 @@ import CounsellorQueuePage from "@/pages/CounsellorQueuePage";
 import CounsellorDetailPage from "@/pages/CounsellorDetailPage";
 import OperatorPage from "@/pages/OperatorPage";
 import SupervisorPage from "@/pages/SupervisorPage";
+import ImpactPage from "@/pages/ImpactPage";
+import NearbyMapPage from "@/pages/NearbyMapPage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
 function Boot() {
@@ -73,6 +75,8 @@ function App() {
                     <Route path="/counsellor/:caseId" element={<ProtectedRoute roles={["counsellor", "supervisor"]}><CounsellorDetailPage /></ProtectedRoute>} />
                     <Route path="/operator" element={<ProtectedRoute roles={["counsellor", "supervisor"]}><OperatorPage /></ProtectedRoute>} />
                     <Route path="/supervisor" element={<ProtectedRoute roles={["supervisor"]}><SupervisorPage /></ProtectedRoute>} />
+                    <Route path="/impact" element={<ProtectedRoute roles={["supervisor"]}><ImpactPage /></ProtectedRoute>} />
+                    <Route path="/nearby" element={<ProtectedRoute><NearbyMapPage /></ProtectedRoute>} />
                 </Routes>
             </BrowserRouter>
         </AppProvider>

@@ -58,7 +58,7 @@ export default function HomePage() {
                 </div>
                 <div className="grid grid-cols-2 gap-3 mt-3">
                     <Tile Icon={ClipboardList} label="Case Timeline" hi="केस टाइमलाइन" to="/history" testid="tile-timeline" />
-                    <Tile Icon={Users} label="Support Directory" hi="सहायता निर्देशिका" to="/support-directory" testid="tile-support" />
+                    <Tile Icon={Users} label="Nearby Help" hi="नज़दीकी मदद" to="/nearby" testid="tile-nearby" />
                     <Tile Icon={FileText} label="Drafted Complaints" hi="शिकायत मसौदे" to="/drafts" testid="tile-drafts" />
                     <Tile Icon={History} label="Query History" hi="पूर्व पूछताछ" to="/history" testid="tile-history" />
                 </div>

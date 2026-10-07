@@ -1,7 +1,7 @@
 import React from "react";
 import MobileFrame from "@/components/MobileFrame";
 import { useNavigate } from "react-router-dom";
-import { useIntakeStore } from "@/pages/IntakeStore";
+import { intakeStore } from "@/pages/IntakeStore";
 import { HandCoins, Shield, Home, UsersRound, HeartCrack, Briefcase } from "lucide-react";
 
 const CATS = [
@@ -15,10 +15,9 @@ const CATS = [
 
 export default function CategoryPage() {
     const nav = useNavigate();
-    const setField = useIntakeStore((s) => s.setField);
 
     const pick = (key) => {
-        setField("category", key);
+        intakeStore.setField("category", key);
         nav("/intake/consent");
     };
 

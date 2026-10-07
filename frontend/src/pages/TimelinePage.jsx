@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import MobileFrame from "@/components/MobileFrame";
 import CaseTimeline from "@/components/CaseTimeline";
 import SVIGauge, { levelColor } from "@/components/SVIGauge";
+import CaseChat from "@/components/CaseChat";
 import { api } from "@/lib/api";
 import { FileText, PhoneCall } from "lucide-react";
 
@@ -55,6 +56,10 @@ export default function TimelinePage() {
                                 <PhoneCall size={18} />
                                 <div className="font-serif font-bold mt-2">Call 14566</div>
                             </a>
+                        </div>
+
+                        <div className="mt-4">
+                            <CaseChat caseId={c.case_id} />
                         </div>
                     </>
                 )}

@@ -739,14 +739,154 @@ async def export_case(case_id: str, current=Depends(get_current_user)):
     return StreamingResponse(iter([buf.getvalue()]), media_type="application/zip", headers=headers)
 
 
+# ---------- Case Chat (encrypted) ----------
+class ChatMessageIn(BaseModel):
+    text: str
+
+
+@api.post("/cases/{case_id}/chat")
+async def send_chat(case_id: str, body: ChatMessageIn, current=Depends(get_current_user)):
+    case = await db.cases.find_one({"case_id": case_id}, {"_id": 0, "user_id": 1, "assigned_counsellor_id": 1, "assessment": 1, "category": 1})
+    if not case:
+        raise HTTPException(status_code=404, detail="Not found")
+    if current["role"] == "victim" and case["user_id"] != current["id"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not (body.text or "").strip():
+        raise HTTPException(status_code=400, detail="Empty message")
+
+    msg = {
+        "id": str(uuid.uuid4()),
+        "case_id": case_id,
+        "author_id": current["id"],
+        "author_role": current["role"],
+        "author_name": current.get("name") or current.get("email"),
+        "text_encrypted": encrypt_audio(body.text),  # same Fernet pipeline
+        "created_at": now_iso(),
+    }
+    await db.chat_messages.insert_one(dict(msg))
+    await audit(current["id"], "chat_send", case_id)
+
+    # Push to the other party if critical/high
+    if current["role"] == "counsellor" or current["role"] == "supervisor":
+        # notify victim via push if subscribed (not implemented for victims yet) - skip
+        pass
+    else:
+        # alert assigned counsellor if any
+        try:
+            if case.get("assigned_counsellor_id"):
+                subs = await db.push_subscriptions.find({"user_id": case["assigned_counsellor_id"]}, {"_id": 0}).to_list(10)
+                for s in subs:
+                    send_push(s["subscription"], {"title": f"New message · #{case_id}", "body": body.text[:80], "url": f"/counsellor/{case_id}"})
+        except Exception as _e:
+            log.error(f"chat push fail: {_e}")
+
+    msg.pop("text_encrypted", None)
+    msg["text"] = body.text
+    return msg
+
+
+@api.get("/cases/{case_id}/chat")
+async def list_chat(case_id: str, current=Depends(get_current_user)):
+    case = await db.cases.find_one({"case_id": case_id}, {"_id": 0, "user_id": 1})
+    if not case:
+        raise HTTPException(status_code=404, detail="Not found")
+    if current["role"] == "victim" and case["user_id"] != current["id"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    rows = await db.chat_messages.find({"case_id": case_id}, {"_id": 0}).sort("created_at", 1).to_list(500)
+    out = []
+    for r in rows:
+        try:
+            r["text"] = decrypt_audio(r.pop("text_encrypted", ""))
+        except Exception:
+            r["text"] = "[corrupt]"
+        out.append(r)
+    return out
+
+
+# ---------- Supervisor Impact Dashboard ----------
+@api.get("/supervisor/impact")
+async def impact_metrics(days: int = 7, current=Depends(get_current_user)):
+    if current["role"] != "supervisor":
+        raise HTTPException(status_code=403, detail="Supervisor only")
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=days)
+    all_cases = await db.cases.find({}, {"_id": 0, "created_at": 1, "assessment": 1, "stage": 1, "stages_completed": 1, "updated_at": 1, "notes": 1}).to_list(2000)
+
+    # Daily case counts
+    daily: Dict[str, int] = {}
+    for d in range(days):
+        key = (now - timedelta(days=days - 1 - d)).strftime("%Y-%m-%d")
+        daily[key] = 0
+
+    svi_bucket = {"Low": 0, "Moderate": 0, "High": 0, "Critical": 0}
+    total = 0
+    time_to_escalate_sec = []
+
+    escalations = await db.escalations.find({}, {"_id": 0}).to_list(2000)
+    esc_by_case = {}
+    for e in escalations:
+        esc_by_case.setdefault(e["case_id"], e)
+
+    cat_count: Dict[str, int] = {}
+    for c in all_cases:
+        try:
+            created = datetime.fromisoformat(c["created_at"].replace("Z", "+00:00"))
+        except Exception:
+            continue
+        if created < cutoff:
+            continue
+        total += 1
+        d_key = created.strftime("%Y-%m-%d")
+        if d_key in daily:
+            daily[d_key] += 1
+        lvl = (c.get("assessment") or {}).get("level") or "Low"
+        if lvl in svi_bucket:
+            svi_bucket[lvl] += 1
+        # category — need from c; fetch below
+        esc = esc_by_case.get(c.get("case_id") or "")
+        if esc:
+            try:
+                esc_at = datetime.fromisoformat(esc["at"].replace("Z", "+00:00"))
+                time_to_escalate_sec.append((esc_at - created).total_seconds())
+            except Exception:
+                pass
+
+    # Pull category counts (second pass to avoid heavy nested)
+    all_cases_cat = await db.cases.find({}, {"_id": 0, "category": 1, "created_at": 1}).to_list(2000)
+    for c in all_cases_cat:
+        try:
+            created = datetime.fromisoformat(c["created_at"].replace("Z", "+00:00"))
+        except Exception:
+            continue
+        if created < cutoff:
+            continue
+        cat_count[c.get("category") or "other"] = cat_count.get(c.get("category") or "other", 0) + 1
+
+    avg_tte = round(sum(time_to_escalate_sec) / len(time_to_escalate_sec) / 60, 1) if time_to_escalate_sec else None  # minutes
+    return {
+        "window_days": days,
+        "total_cases": total,
+        "critical_cases": svi_bucket["Critical"],
+        "daily": [{"date": k, "count": v} for k, v in daily.items()],
+        "svi_distribution": [{"level": k, "count": v} for k, v in svi_bucket.items()],
+        "categories": [{"name": k, "count": v} for k, v in cat_count.items()],
+        "avg_time_to_escalation_min": avg_tte,
+        "total_escalations": len(escalations),
+    }
+
+
 # ---------- Support Directory ----------
 SUPPORT_DIRECTORY = [
-    {"id": "cnl-1", "type": "counsellor", "name": "Dr. Meera Krishnan", "phone": "+91-98100-12345", "lang": ["en", "hi", "ta"], "city": "Delhi"},
-    {"id": "cnl-2", "type": "counsellor", "name": "Priyanka Deshmukh", "phone": "+91-98201-67890", "lang": ["hi", "mr"], "city": "Mumbai"},
-    {"id": "law-1", "type": "legal_aid", "name": "District Legal Services Authority — Lucknow", "phone": "+91-522-2612345", "lang": ["hi", "en"], "city": "Lucknow"},
-    {"id": "law-2", "type": "legal_aid", "name": "National Legal Services Authority (NALSA)", "phone": "15100", "lang": ["hi", "en"], "city": "Pan-India"},
-    {"id": "reh-1", "type": "rehab", "name": "Ambedkar Rehabilitation Centre", "phone": "+91-141-2234561", "lang": ["hi"], "city": "Jaipur"},
-    {"id": "reh-2", "type": "rehab", "name": "Dr. B.R. Ambedkar Foundation", "phone": "+91-11-23350517", "lang": ["hi", "en"], "city": "New Delhi"},
+    {"id": "cnl-1", "type": "counsellor", "name": "Dr. Meera Krishnan", "phone": "+91-98100-12345", "lang": ["en", "hi", "ta"], "city": "Delhi", "lat": 28.6139, "lng": 77.2090},
+    {"id": "cnl-2", "type": "counsellor", "name": "Priyanka Deshmukh", "phone": "+91-98201-67890", "lang": ["hi", "mr"], "city": "Mumbai", "lat": 19.0760, "lng": 72.8777},
+    {"id": "law-1", "type": "legal_aid", "name": "District Legal Services Authority — Lucknow", "phone": "+91-522-2612345", "lang": ["hi", "en"], "city": "Lucknow", "lat": 26.8467, "lng": 80.9462},
+    {"id": "law-2", "type": "legal_aid", "name": "National Legal Services Authority (NALSA)", "phone": "15100", "lang": ["hi", "en"], "city": "New Delhi", "lat": 28.6139, "lng": 77.2090},
+    {"id": "law-3", "type": "legal_aid", "name": "DLSA Jaipur", "phone": "+91-141-2227489", "lang": ["hi"], "city": "Jaipur", "lat": 26.9124, "lng": 75.7873},
+    {"id": "law-4", "type": "legal_aid", "name": "DLSA Patna", "phone": "+91-612-2219035", "lang": ["hi"], "city": "Patna", "lat": 25.5941, "lng": 85.1376},
+    {"id": "reh-1", "type": "rehab", "name": "Ambedkar Rehabilitation Centre", "phone": "+91-141-2234561", "lang": ["hi"], "city": "Jaipur", "lat": 26.9124, "lng": 75.7873},
+    {"id": "reh-2", "type": "rehab", "name": "Dr. B.R. Ambedkar Foundation", "phone": "+91-11-23350517", "lang": ["hi", "en"], "city": "New Delhi", "lat": 28.6139, "lng": 77.2090},
+    {"id": "reh-3", "type": "rehab", "name": "SC/ST Welfare Centre, Hyderabad", "phone": "+91-40-23237778", "lang": ["te", "en"], "city": "Hyderabad", "lat": 17.3850, "lng": 78.4867},
+    {"id": "reh-4", "type": "rehab", "name": "Dalit Rehab Mission, Chennai", "phone": "+91-44-28223311", "lang": ["ta", "en"], "city": "Chennai", "lat": 13.0827, "lng": 80.2707},
 ]
 
 

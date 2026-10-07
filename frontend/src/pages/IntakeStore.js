@@ -39,3 +39,10 @@ export function useIntakeStore(selector = (s) => s) {
         () => selector(initial),
     );
 }
+
+// Convenience hook: returns the mutators (never changes identity)
+export const useIntakeActions = () => ({
+    set: intakeStore.set,
+    setField: intakeStore.setField,
+    reset: intakeStore.reset,
+});

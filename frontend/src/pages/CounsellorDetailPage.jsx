@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { toast } from "sonner";
 import SVIGauge from "@/components/SVIGauge";
 import CaseTimeline from "@/components/CaseTimeline";
+import CaseChat from "@/components/CaseChat";
 import { Check, Flag, Megaphone, NotebookPen, Play } from "lucide-react";
 
 export default function CounsellorDetailPage() {
@@ -133,6 +134,10 @@ export default function CounsellorDetailPage() {
                     <button data-testid="escalate-btn" onClick={escalate} disabled={busy} className="press mt-3 bg-deepred text-white rounded-full py-2.5 px-5 text-sm font-medium flex items-center gap-2">
                         <Megaphone size={16}/> Submit Hand-off
                     </button>
+                </div>
+
+                <div className="mt-4">
+                    <CaseChat caseId={c.case_id} />
                 </div>
             </div>
         </MobileFrame>

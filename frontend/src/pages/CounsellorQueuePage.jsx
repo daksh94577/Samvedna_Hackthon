@@ -54,7 +54,10 @@ export default function CounsellorQueuePage() {
                             {pushOn ? "Test Alert" : "Enable Alerts"}
                         </button>
                         {user?.role === "supervisor" && (
-                            <button data-testid="go-supervisor" onClick={() => nav("/supervisor")} className="press text-xs bg-olive text-white rounded-full px-3 py-1.5">Audit Log</button>
+                            <>
+                                <button data-testid="go-impact" onClick={() => nav("/impact")} className="press text-xs bg-brown text-white rounded-full px-3 py-1.5">Impact</button>
+                                <button data-testid="go-supervisor" onClick={() => nav("/supervisor")} className="press text-xs bg-olive text-white rounded-full px-3 py-1.5">Audit Log</button>
+                            </>
                         )}
                         <button data-testid="go-operator" onClick={() => nav("/operator")} className="press text-xs border border-sand bg-white rounded-full px-3 py-1.5 text-brown flex items-center gap-1">
                             <Headphones size={13}/> Operator
