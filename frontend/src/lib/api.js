@@ -14,3 +14,10 @@ api.interceptors.request.use((cfg) => {
 export const setToken = (t) => localStorage.setItem("samvedna_token", t);
 export const clearToken = () => localStorage.removeItem("samvedna_token");
 export const getToken = () => localStorage.getItem("samvedna_token");
+
+export const errMsg = (e, fb) => {
+  const d = e?.response?.data?.detail;
+  if (Array.isArray(d)) return d.map(x => `${(x.loc || []).slice(1).join(".")}: ${x.msg}`).join("; ");
+  if (typeof d === "string") return d;
+  return fb;
+};

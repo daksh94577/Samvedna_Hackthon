@@ -1,4 +1,4 @@
-"""
+﻿"""
 Samvedna / संवेदना — Backend
 FastAPI + MongoDB
 Features: Dual OTP auth (mobile + email, DEV MODE fallback), SVI engine,
@@ -57,6 +57,9 @@ DEV_MODE = not (SMTP_HOST and SMTP_USER and SMTP_PASS) or not (TWILIO_SID and TW
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 log = logging.getLogger("samvedna")
 
+import dns.resolver as _r
+_r.default_resolver = _r.Resolver(configure=False)
+_r.default_resolver.nameservers = ['8.8.8.8','1.1.1.1']
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
@@ -991,3 +994,4 @@ app.add_middleware(
 @app.on_event("shutdown")
 async def shutdown():
     client.close()
+

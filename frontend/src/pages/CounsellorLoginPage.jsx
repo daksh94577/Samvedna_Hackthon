@@ -1,3 +1,4 @@
+import { errMsg } from "@/lib/api";
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "@/context/AppContext";
@@ -37,7 +38,7 @@ export default function CounsellorLoginPage() {
                 toast.success(`DEV MODE · OTP ${r.data.dev_email_otp}`, { duration: 10000 });
             }
         } catch (e) {
-            toast.error(e.response?.data?.detail || "Not registered");
+            toast.error(errMsg(e, "Not registered"));
         } finally {
             setBusy(false);
         }
@@ -50,7 +51,7 @@ export default function CounsellorLoginPage() {
             await login(r.data.token, r.data.user);
             nav("/counsellor");
         } catch (e) {
-            toast.error(e.response?.data?.detail || "Invalid OTP");
+            toast.error(errMsg(e, "Invalid OTP"));
         } finally {
             setBusy(false);
         }

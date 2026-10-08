@@ -1,3 +1,4 @@
+import { errMsg } from "@/lib/api";
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "@/context/AppContext";
@@ -50,7 +51,7 @@ export default function LoginPage() {
                 toast.success("OTPs sent to your mobile and email");
             }
         } catch (e) {
-            toast.error(e.response?.data?.detail || "Failed to send OTP");
+            toast.error(errMsg(e, "Failed to send OTP"));
         } finally {
             setBusy(false);
         }
@@ -70,7 +71,7 @@ export default function LoginPage() {
             setResendIn(30);
             toast.success("Mobile verified · now verify email");
         } catch (e) {
-            toast.error(e.response?.data?.detail || "Invalid OTP");
+            toast.error(errMsg(e, "Invalid OTP"));
         } finally {
             setBusy(false);
         }
@@ -85,7 +86,7 @@ export default function LoginPage() {
             toast.success("Welcome to Samvedna");
             nav("/home");
         } catch (e) {
-            toast.error(e.response?.data?.detail || "Invalid OTP");
+            toast.error(errMsg(e, "Invalid OTP"));
         } finally {
             setBusy(false);
         }

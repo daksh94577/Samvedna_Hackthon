@@ -1,3 +1,4 @@
+import { errMsg } from "@/lib/api";
 import React, { useEffect, useRef, useState } from "react";
 import MobileFrame from "@/components/MobileFrame";
 import { useIntakeStore } from "@/pages/IntakeStore";
@@ -78,7 +79,7 @@ export default function ComplaintPage() {
             }
             toast.success("Encrypted & attached");
         } catch (err) {
-            toast.error(err.response?.data?.detail || "Upload failed");
+            toast.error(errMsg(err, "Upload failed"));
         } finally {
             setBusy(false);
             if (fileRef.current) fileRef.current.value = "";

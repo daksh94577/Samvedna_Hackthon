@@ -1,3 +1,4 @@
+import { errMsg } from "@/lib/api";
 import React from "react";
 import MobileFrame from "@/components/MobileFrame";
 import { useNavigate } from "react-router-dom";
@@ -42,7 +43,7 @@ export default function VerifyPage() {
             try { await api.patch(`/cases/${r.data.case_id}`, { stage: "Verified" }); } catch {}
             nav("/intake/assessment");
         } catch (e) {
-            toast.error(e.response?.data?.detail || "Could not submit case");
+            toast.error(errMsg(e, "Could not submit case"));
         } finally {
             setBusy(false);
         }
