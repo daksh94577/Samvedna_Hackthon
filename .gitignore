@@ -104,3 +104,11 @@ node_modules/
 __pycache__/
 test_reports/
 *.log
+.env
+node_modules/
+.venv/
+__pycache__/
+.env
+node_modules/
+.venv/
+__pycache__/
