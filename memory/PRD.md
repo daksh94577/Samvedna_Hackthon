@@ -87,3 +87,36 @@ SIH 26093 · NHAA 14566: Build a fully working, mobile-first web app prototype f
 - **Nearby Help Map**: `support-directory` payload now includes `lat`/`lng` for every entry (10 India org locations). New `/nearby` route and `NearbyMapPage` using OpenStreetMap embed (no API key), browser geolocation, haversine-sorted list, OSM directions link + Call button. Home page toolkit swapped "Support Directory" tile → "Nearby Help".
 - **Impact Dashboard**: `GET /api/supervisor/impact?days=7` returns {total_cases, critical_cases, daily, svi_distribution, categories, avg_time_to_escalation_min, total_escalations}. New `/impact` supervisor-only route rendering recharts BarChart (daily volume), PieChart (SVI distribution with level colours), horizontal BarChart (categories), 4 KPI cards. CounsellorQueuePage adds an "Impact" button for supervisors.
 - **Testing**: 48/48 backend tests pass (iteration_4.json). 10 new tests (Chat RBAC + encryption-at-rest + bidirectional + chronological; Impact RBAC + shape + 4 svi buckets + days-param + escalation count; Support directory lat/lng in India bounding box). Zero regressions.
+
+## Update 2026-10-08 — Single-file GitHub backend handoff
+
+### User request and completed scope
+- User requested a separate GitHub-shareable file containing backend programming and API-key configuration, and explicitly chose `BACKEND_GITHUB.md` with complete code, endpoints, setup and placeholders rather than real secrets.
+- Created `/app/BACKEND_GITHUB.md` (86,241 bytes) and an identical downloadable copy at `/app/frontend/public/BACKEND_GITHUB.md` (served at `/BACKEND_GITHUB.md` on the current preview origin).
+- Document contains all five backend implementation modules verbatim, per-file SHA-256 hashes, all **32** custom API operations (correcting the handoff's count of 30), request examples, access rules, a portable runtime dependency subset, local launch instructions, and placeholders covering all **17** environment variables read by the backend. Two additional launcher variables are clearly distinguished.
+- Real `.env` files, credentials, private keys, tokens, database records, uploads and evidence were not included. The existing repository's ignore rules/history were not changed; the document includes a safe `.gitignore` template and warns that already-tracked secrets remain tracked.
+- No application logic, integrations, authentication credentials or database records were created or modified. No new authentication/provider integration was implemented.
+
+### Verification performed for this documentation task
+- External preview GET `/BACKEND_GITHUB.md`: HTTP 200; downloaded bytes match both local copies exactly.
+- Extracted all five Python source blocks: exact source parity, valid AST syntax and matching SHA-256 hashes.
+- Compared documented API table against `server.py` decorators: all 32 operations appear exactly once, with no invented routes.
+- Compared environment template against all Python environment reads: 17/17 covered.
+- Checked artifact against private values from existing environment files and private PEM markers: none present; Markdown fences/placeholders validated.
+- External preview GET `/api/`: HTTP 200, correct application identity. Historical 48/48 application tests were not rerun for this documentation-only change; no clean-machine dependency installation or real provider delivery was tested.
+
+### Current limitations clarified from source (not fixed in this task)
+- OTP delivery without provider credentials is **MOCKED / DEV MODE**. Escalation is **MOCKED** (`mock_submitted_to_NHAA`); there is no real NHAA/police handoff integration.
+- Live Twilio SMS Verify generates a different OTP from the locally stored hash; keys alone will not complete the live SMS flow.
+- Counsellor verification lacks expiry, role-hint and one-time-consumption enforcement. Case PATCH lacks an owner guard for stage/notes. Public development/seed endpoints require restriction before use with real data. These are source observations, not a full security audit.
+- `crypto_util.py` creates its Fernet instance before `server.py` loads `.env`; the documented local launcher preloads environment variables to avoid the fallback. Runtime was left unchanged.
+- Encryption is **Fernet AES-128-CBC + HMAC-SHA256**, not AES-256-GCM. Audio, attachment contents and chat are encrypted at rest; narratives, identity fields and notes are not. This supersedes inaccurate historical “AES-256” wording above.
+- Impact's first projection omits `case_id`, preventing reliable escalation matching; `total_escalations` is not restricted to the requested time window.
+- Server-side ZIP complaints remain `.txt`; PDF/DOCX backend generation and LLM scoring remain unimplemented. The local SVI heuristic is not clinically validated.
+
+### Prioritized next actions / backlog (supersedes historical deferred list)
+- **Immediate user action:** Download/share only `BACKEND_GITHUB.md` as requested; do not publish actual environment files or evidence. Update both document copies whenever backend source changes.
+- **P0 before real-world use:** Correct live OTP verification, staff session validation, case-update access controls and development endpoint exposure; remove secret fallbacks and make encryption-key loading explicit. These are outside the approved documentation-only scope.
+- **P1:** Implement actual backend PDF/DOCX export; correct impact metric calculations; optionally add the previously discussed contextual LLM integration when requested, retaining human oversight.
+- **P2:** Configure and verify actual SMS/WhatsApp/SMTP credentials after OTP fixes; modularize backend routers and add pagination as needed. PWA, translations and encrypted audio/chat/attachments are already implemented, not pending.
+- **Suggested enhancement:** Automated secret scanning and API regression checks for the repository.
