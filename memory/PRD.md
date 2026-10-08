@@ -120,3 +120,30 @@ SIH 26093 · NHAA 14566: Build a fully working, mobile-first web app prototype f
 - **P1:** Implement actual backend PDF/DOCX export; correct impact metric calculations; optionally add the previously discussed contextual LLM integration when requested, retaining human oversight.
 - **P2:** Configure and verify actual SMS/WhatsApp/SMTP credentials after OTP fixes; modularize backend routers and add pagination as needed. PWA, translations and encrypted audio/chat/attachments are already implemented, not pending.
 - **Suggested enhancement:** Automated secret scanning and API regression checks for the repository.
+
+## Update 2026-10-08 — Frontend and remaining project GitHub package
+
+### User request / completed scope
+- User requested frontend code and the remaining project files shareable on GitHub, **excluding the already supplied backend**. Explicitly chose ZIP + `FRONTEND_GITHUB.md` with actual frontend code, icons/assets, dependencies, configuration and safe `.env.example`.
+- Created `/app/SAMVEDNA_FRONTEND_GITHUB.zip` (433,243 bytes) and `/app/FRONTEND_GITHUB.md` (347,611 bytes), with identical downloadable copies in `frontend/public/` at `/SAMVEDNA_FRONTEND_GITHUB.zip` and `/FRONTEND_GITHUB.md` on the current preview origin.
+- ZIP contains **119 files** under `samvedna-frontend/`: all **94 frontend source files**, **22 page components**, **46 UI library files**, **23 routes**, both PNG icons, manifest/service worker, original package.json/yarn.lock, CRACO/Tailwind/PostCSS/alias/UI configuration, and required development health helpers.
+- Added export-only README/setup, public `.env.example`, safe `.gitignore`, project overview, complete declared package/service inventory, asset notes, filtered design tokens, prototype limitations and `EXPORT_MANIFEST.json` with SHA-256 checksums.
+- Markdown contains **106 complete text implementation/configuration blocks** matching the ZIP. Actual PNG bytes and the full original Yarn lockfile are in the ZIP rather than repeated in Markdown. Remote Google Fonts and OpenStreetMap resources are documented, not vendored. Installed dependencies are not bundled.
+- Every application source file, package manifest, lockfile and executable build configuration is unchanged. Only the **exported** `public/index.html` removes preview analytics/instrumentation; the running app's HTML is unchanged. Export README files replace generic/outdated documentation in the archive only.
+- Excluded backend files, prior backend Markdown export, actual environment files, private credentials/PEMs, Git/workspace metadata, private memory/test reports, caches, node_modules/build output, user data and evidence. Actual repository ignore rules/history remain unchanged.
+- No runtime application logic, database records, auth credentials or integrations were modified; no new provider setup was attempted.
+
+### Verification
+- All ZIP CRC/path-safety checks, unique entries and all manifest hashes passed. All 94 source files are present byte-for-byte; package/lock and other unchanged entries match originals.
+- All 106 code blocks match archive payloads; all 23 route descriptions match App.js; both PNGs decode at their correct 192×192 / 512×512 dimensions.
+- Checked known private values from current environment files, private PEM/key markers, current preview origin and preview analytics key: absent from the export.
+- Both final external downloads returned HTTP 200 and are byte-identical to root/public copies. Existing frontend shell and `/api/` remain accessible (HTTP 200).
+- Extracted ZIP and ran `yarn build` with Node 20.20.2 / Yarn 1.22.22 using a symlink to the existing workspace's installed dependencies: **exit 0**. One **pre-existing** `react-hooks/exhaustive-deps` warning remains in `CounsellorDetailPage.jsx` for `load`; documented rather than changing source in an export-only task.
+- Final archive build inputs were compared against the successfully built extraction after documentation updates and are unchanged. No fresh dependency installation, full browser suite or live provider delivery test was performed; no such verification is claimed.
+
+### Next actions / backlog
+- **User next action:** Download/extract ZIP and add its contents to the desired GitHub repository. Keep `.gitignore`; merge it if combining with an existing repository. Set a private local `.env` from `.env.example` and connect the separately configured backend for API-dependent flows. Source sharing does not itself run the app.
+- **P0 before real users:** Prior backend OTP/authorization hardening remains pending. Frontend source also retains automatic `/api/seed` on startup, non-user-partitioned API caches without logout clearing, and inaccurate encryption labels; documented, not fixed by packaging.
+- **P1:** Backend PDF/DOCX generation and impact metrics remain pending; improve frontend Hindi PDF rendering and long-document pagination. Review the existing Hook dependency warning during a future code-change task.
+- **P2:** Complete remaining hardcoded/fallback translations, verify directory contacts and live delivery after backend fixes. Optional contextual LLM scoring remains deferred. No backend code is included in this frontend export.
+- **Suggested enhancement:** Repository secret scanning plus automated frontend build/API regression checks. Current OTP without provider credentials and NHAA escalation remain **MOCKED / DEV MODE**, as documented in both exports.
