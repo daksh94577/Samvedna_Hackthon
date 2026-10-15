@@ -1,0 +1,39 @@
+{
+    "short_name": "Samvedna",
+    "name": "Samvedna / संवेदना",
+    "description": "AI-powered real-time distress screening for victims. NHAA Helpline 14566.",
+    "icons": [
+        {
+            "src": "icon-192.png",
+            "type": "image/png",
+            "sizes": "192x192",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "icon-512.png",
+            "type": "image/png",
+            "sizes": "512x512",
+            "purpose": "any maskable"
+        }
+    ],
+    "start_url": ".",
+    "scope": "/",
+    "display": "standalone",
+    "orientation": "portrait",
+    "theme_color": "#4A5A1E",
+    "background_color": "#F7EFE2",
+    "lang": "en",
+    "categories": ["health", "social", "government"],
+    "shortcuts": [
+        {
+            "name": "Describe a New Problem",
+            "short_name": "New Case",
+            "url": "/intake/category"
+        },
+        {
+            "name": "Call Helpline",
+            "short_name": "14566",
+            "url": "tel:14566"
+        }
+    ]
+}

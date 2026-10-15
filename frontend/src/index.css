@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    margin: 0;
+    font-family: "Noto Sans", "Noto Sans Devanagari", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: #0f0e0b;
+    color: #1A1A1A;
+}
+
+h1, h2, h3, h4, h5 {
+    font-family: "Noto Serif", "Noto Serif Devanagari", serif;
+    letter-spacing: -0.01em;
+}
+
+@layer base {
+    :root {
+        --background: 42 48% 93%;
+        --foreground: 0 0% 10%;
+        --card: 0 0% 100%;
+        --card-foreground: 0 0% 10%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 0 0% 10%;
+        --primary: 72 51% 24%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 42 48% 93%;
+        --secondary-foreground: 0 0% 10%;
+        --muted: 40 25% 85%;
+        --muted-foreground: 0 0% 35%;
+        --accent: 40 25% 90%;
+        --accent-foreground: 72 51% 24%;
+        --destructive: 7 69% 32%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 39 32% 75%;
+        --input: 39 32% 85%;
+        --ring: 72 51% 24%;
+        --radius: 1rem;
+    }
+}
+
+@layer base {
+    * { @apply border-border; }
+    body { @apply bg-cream text-foreground; }
+}
+
+/* Mobile frame outer shell on desktop */
+.samvedna-shell {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    background:
+        radial-gradient(1200px 600px at 10% 0%, rgba(74, 90, 30, 0.25), transparent 60%),
+        radial-gradient(900px 500px at 90% 100%, rgba(184, 134, 43, 0.18), transparent 60%),
+        #0f0e0b;
+}
+
+.frame {
+    width: 100%;
+    max-width: 420px;
+    min-height: 100vh;
+    background: #F7EFE2;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+    position: relative;
+    overflow-x: hidden;
+}
+
+/* Thin scrollbar inside frame */
+.frame::-webkit-scrollbar { width: 6px; }
+.frame::-webkit-scrollbar-thumb { background: #D3C7AC; border-radius: 3px; }
+
+/* Noise/texture overlay for warmth */
+.cream-texture {
+    background-image:
+        radial-gradient(rgba(74, 90, 30, 0.03) 1px, transparent 1px);
+    background-size: 18px 18px;
+}
+
+/* Button micro-interaction */
+.press:active { transform: scale(0.98); }
+
+/* Waveform bars */
+.wave-bar { transform-origin: center; }
+
+/* Devanagari rendering tweak */
+.hindi { font-family: "Noto Serif Devanagari", "Noto Serif", serif; }
+
+@layer base {
+    [data-debug-wrapper="true"] { display: contents !important; }
+}
+
+/* Hide default button rings but keep accessible focus */
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible {
+    outline: 2px solid #4A5A1E;
+    outline-offset: 2px;
+}
